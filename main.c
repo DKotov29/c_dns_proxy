@@ -59,8 +59,6 @@ struct dns_query_t *buildResponse(int id, bool query, enum dns_rcode rcode) {
     return pQuery;
 }
 
-struct dns_query_t *refused;
-
 /* This function is called whenever there's incoming data to handle. */
 static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
     char buf[BUFSIZE];
@@ -92,24 +90,27 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
     enum dns_rcode rc = dns_decode(decoded, &decodesize, reply, replysize);
 
     result = (dns_query_t *) decoded;
-    printf("id: %i\n", result->id);
-    printf("A: %s\n", result->questions->name);
+    //printf("id: %i\n", result->id);
+    //printf("A: %s\n", result->questions->name);
 
     if (result->questions) {
         // name for blacklist: result->questions->name
         if (naive_is_blacklisted(result->questions->name, black_list, blacklist_len)) {
             // if (strcmp(result->questions->name, "www.google.com.")) {
-            refused->id = result->id;
+
+            result->query = false;
+            result->rcode = RCODE_REFUSED;
             dns_packet_t buf2[1024];
             size_t len = sizeof(buf2);
-            dns_encode(buf2, &len, refused);
+            dns_encode(buf2, &len, result);
             n = sendto(fd, buf2, len, 0, (struct sockaddr *)&clientaddr, clientlen);
+            if (n < 0) {
+                perror("ERROR in sendto");
+            }
+            return;
         }
     }
-    // back
-//    dns_packet_t a;
-//    dns_encode(&a, );
-    n = sendto(fd, buf, n, 0, (struct sockaddr *) &clientaddr, clientlen);
+    //n = sendto(fd, buf, n, 0, (struct sockaddr *) &clientaddr, clientlen);
     if (n < 0) {
         perror("ERROR in sendto");
     }
@@ -151,8 +152,6 @@ int main() {
             exit(1);
         }
     }
-
-    refused = buildResponse(0, false, RCODE_REFUSED);
 
     struct event_base *eb = event_base_new();
     if (!eb) {
