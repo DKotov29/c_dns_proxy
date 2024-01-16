@@ -7,7 +7,90 @@
 #include <unistd.h>
 #include <netdb.h> // for udp
 
-#define MAX_CONNECTIONS 20000
+// dns decode/encode
+#include "./lib/SPCDNS/src/dns.h"
+#include "./lib/SPCDNS/src/codec.c"
+
+// libevent
+#include "./lib/libevent/include/event2/event.h"
+#include "./lib/libevent/include/event2/buffer.h"
+#include "./lib/libevent/include/event2/bufferevent.h"
+
+struct SharedContext {
+};
+
+char **black_list;
+size_t blacklist_len;
+
+#define BUFSIZE 1024
+
+bool naive_is_blacklisted(char *checking, char **blacklist, size_t blacklist_len) {
+    for (size_t i = 0; i < blacklist_len; i++) {
+        char *found;
+        char *b_i = blacklist[i];
+        if ((found = strstr(checking, b_i)) != NULL) {
+            if ((size_t)(found - checking) + strlen(b_i) == strlen(checking) ) { // because if google.com blacklisted, we expect *.google.com blacklisted and not gogle.com*
+                printf("yeah\n");
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* This function is called whenever there's incoming data to handle. */
+static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
+    char buf[BUFSIZE];
+    struct sockaddr_in clientaddr;
+    socklen_t clientlen = sizeof(clientaddr);
+    ssize_t n = recvfrom(fd, buf, BUFSIZE, 0, (struct sockaddr *) &clientaddr, &clientlen);
+    if (n < 0) {
+        perror("ERROR in recvfrom");
+        return;
+    }
+
+    char hostaddrp[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &(clientaddr.sin_addr), hostaddrp, INET_ADDRSTRLEN) == NULL) {
+        perror("ERROR on inet_ntop");
+        return;
+    }
+
+    // decode
+    dns_packet_t reply[DNS_BUFFER_UDP];
+    dns_decoded_t decoded[DNS_DECODEBUF_4K];
+    dns_query_t *result;
+    size_t replysize = n;
+    size_t decodesize;
+    memcpy(reply, buf, n);
+
+    /* reply contains a DNS packet, and replysize is set */
+    decodesize = sizeof(decoded);
+
+    enum dns_rcode rc = dns_decode(decoded, &decodesize, reply, replysize);
+
+    result = (dns_query_t *) decoded;
+    printf("id: %i\n", result->id);
+    printf("A: %s\n", result->questions->name);
+
+    if (result->questions) {
+        // name for blacklist: result->questions->name
+        if (naive_is_blacklisted(result->questions->name, black_list, blacklist_len)) {
+       // if (strcmp(result->questions->name, "www.google.com.")) {
+            printf("black list I guess\n");
+        }
+    }
+    // back
+    dns_packet_t a;
+    dns_encode(&a, );
+    n = sendto(fd, buf, n, 0, (struct sockaddr *) &clientaddr, clientlen);
+    if (n < 0) {
+        perror("ERROR in sendto");
+    }
+}
+
+
+// static void do_read(evutil_socket_t fd, short events, void * context) {}
+// static void do_write(evutil_socket_t fd, short events, void * context) {}
 
 int main() {
     FILE *fp = fopen("config.toml", "r");
@@ -26,7 +109,8 @@ int main() {
     toml_value_t boss_server = toml_table_string(tbl, "boss-server");
     toml_array_t *arr = toml_table_array(tbl, "black-list");
     int l = toml_array_len(arr);
-    char **black_list = CALLOC(l, sizeof(char *));
+    blacklist_len = l;
+    black_list = CALLOC(l, sizeof(char *));
     {
         bool string_error = false;
         for (int i = 0; i < l; i++) {
@@ -41,12 +125,19 @@ int main() {
         }
     }
 
-    // todo приймати dns запити на стандартному порту
+    struct event_base *eb = event_base_new();
+    if (!eb) {
+        exit(1);
+    }
+    struct SharedContext *sharedContext = malloc(sizeof(struct SharedContext));
+
+    // register udp socket, bind
     int sockfd;
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < -1) {
         fprintf(stderr, "problem while socket creating");
         exit(1);
     }
+    evutil_make_socket_nonblocking(sockfd);
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
@@ -57,62 +148,12 @@ int main() {
         fprintf(stderr, "problem while socket binding");
         exit(1);
     }
+    struct event *ev = event_new(eb, sockfd, EV_READ | EV_PERSIST, acceptDatagram, sharedContext);
+    event_add(ev, NULL);;
 
-//    if (listen(sockfd, 10) < 0) {
-//        printf("Error while listening\n");
-//        return -1;
-//    }
-
-    for (int i = 0; i < l; i++) {
-        printf("%s\n", black_list[i]);
-    }
-    printf("boss: %s\n", boss_server.u.s);
-
-    // test udp
-    ssize_t n;
-    char *buf;
-    struct sockaddr_in clientaddr;
-    int clientlen = sizeof(clientaddr);
-#define BUFSIZE 1024
-    struct hostent *hostp;
-    char *hostaddrp;
-    //while (1)
-    {
-
-        buf = malloc(BUFSIZE); // todo
-
-        n = recvfrom(sockfd, buf, BUFSIZE, 0,
-                     (struct sockaddr *) &clientaddr, &clientlen);
-        if (n < 0)
-            printf("ERROR in recvfrom");
-
-        /*
-         * gethostbyaddr: determine who sent the datagram
-         */
-        hostp = gethostbyaddr((const char *) &clientaddr.sin_addr.s_addr,
-                              sizeof(clientaddr.sin_addr.s_addr),
-                              AF_INET);
-        if (hostp == NULL)
-            printf("ERROR on gethostbyaddr");
-        hostaddrp = inet_ntoa(clientaddr.sin_addr);
-        if (hostaddrp == NULL)
-            printf("ERROR on inet_ntoa\n");
-        /*printf("server received %d bytes\n", n); */
-
-        /*
-         * sendto: echo the input back to the client
-         */
-        n = sendto(sockfd, buf, n, 0,
-                   (struct sockaddr *) &clientaddr, clientlen);
-        if (n < 0)
-            printf("ERROR in sendto");
-    }
-// ~test udp
+    event_base_dispatch(eb);
 
 
-
-
-    // обробити, якщо в чорному списку - надіслати not resolved або адресу в локальній мережі, якщо ні - надіслати те що вищий днс сервер надасть у відповідь на тей же запит
     for (int i = 0; i < l; i++) {
         free(black_list[i]);
     }

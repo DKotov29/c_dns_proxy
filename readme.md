@@ -12,3 +12,5 @@ Also, it must work good with 10k requests per seconds.
 # Used libraries 
 
 https://github.com/arp242/toml-c/
+https://github.com/spc476/SPCDNS
+libevent

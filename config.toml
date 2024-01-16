@@ -1,2 +1,2 @@
 boss-server = "8.8.8.8"
-black-list = ["vk.com", "vkontakte.ru"]
+black-list = ["vk.com.", "vkontakte.ru."]
