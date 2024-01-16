@@ -16,6 +16,8 @@
 #include "./lib/libevent/include/event2/buffer.h"
 #include "./lib/libevent/include/event2/bufferevent.h"
 
+#include "./lib/uthash/src/uthash.h"
+
 struct SharedContext {
 };
 
@@ -31,7 +33,6 @@ bool naive_is_blacklisted(char *checking, char **blacklist, size_t blacklist_len
         if ((found = strstr(checking, b_i)) != NULL) {
             if ((size_t) (found - checking) + strlen(b_i) ==
                 strlen(checking)) { // because if google.com blacklisted, we expect *.google.com blacklisted and not gogle.com*
-                printf("yeah\n");
                 return true;
             }
         }
@@ -59,12 +60,29 @@ struct dns_query_t *buildResponse(int id, bool query, enum dns_rcode rcode) {
     return pQuery;
 }
 
+struct sockaddr_in bossserveraddr;
+socklen_t bossservelen;
+
+struct for_map {
+    uint64_t id; // from dns req
+    struct sockaddr_in clientaddr;
+    UT_hash_handle hh;
+};
+
+struct for_map *map = NULL;
+
+
 /* This function is called whenever there's incoming data to handle. */
 static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
     char buf[BUFSIZE];
     struct sockaddr_in clientaddr;
-    socklen_t clientlen = sizeof(clientaddr);
+    static socklen_t clientlen = sizeof(clientaddr);
     ssize_t n = recvfrom(fd, buf, BUFSIZE, 0, (struct sockaddr *) &clientaddr, &clientlen);
+    printf("buffer:\n");
+    for (int kkk = 0; kkk < n; kkk++) {
+        printf("%d ", buf[kkk]);
+    }
+    printf("\n");
     if (n < 0) {
         perror("ERROR in recvfrom");
         return;
@@ -93,26 +111,54 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
     //printf("id: %i\n", result->id);
     //printf("A: %s\n", result->questions->name);
 
-    if (result->questions) {
-        // name for blacklist: result->questions->name
-        if (naive_is_blacklisted(result->questions->name, black_list, blacklist_len)) {
-            // if (strcmp(result->questions->name, "www.google.com.")) {
+    if (result->query) {
+        if (result->questions) {
+            // name for blacklist: result->questions->name
+            if (naive_is_blacklisted(result->questions->name, black_list, blacklist_len)) {
+                // if (strcmp(result->questions->name, "www.google.com.")) {
 
-            result->query = false;
-            result->rcode = RCODE_REFUSED;
-            dns_packet_t buf2[1024];
-            size_t len = sizeof(buf2);
-            dns_encode(buf2, &len, result);
-            n = sendto(fd, buf2, len, 0, (struct sockaddr *)&clientaddr, clientlen);
-            if (n < 0) {
-                perror("ERROR in sendto");
+                result->query = false;
+                result->rcode = RCODE_REFUSED;
+                dns_packet_t buf2[1024];
+                size_t len = sizeof(buf2);
+                dns_encode(buf2, &len, result);
+                n = sendto(fd, buf2, len, 0, (struct sockaddr *) &clientaddr, clientlen);
+                if (n < 0) {
+                    perror("ERROR in sendto");
+                }
+                return;
             }
+        }
+
+        struct for_map *s;
+        uint64_t looking_for = result->id;
+        HASH_FIND_INT(map, &looking_for, s);
+        if (s == NULL) {
+            s = (struct for_map *) malloc(sizeof *s);
+            s->id = result->id;
+            s->clientaddr = clientaddr;
+            HASH_ADD_INT(map, id, s);
+        } else {// possibly needs improvement
+            s->id = result->id;
+            s->clientaddr = clientaddr;
+        }
+        n = sendto(fd, buf, n, 0, (struct sockaddr *) &bossserveraddr, bossservelen);
+        if (n < 0) {
+            perror("ERROR in sendto");
+        }
+    } else { // its response
+        struct for_map *s;
+        uint64_t looking_for = result->id;
+        HASH_FIND_INT(map, &looking_for, s);
+        if (s == NULL) {
+            printf("it must be impossible \n");
             return;
         }
-    }
-    //n = sendto(fd, buf, n, 0, (struct sockaddr *) &clientaddr, clientlen);
-    if (n < 0) {
-        perror("ERROR in sendto");
+        n = sendto(fd, buf, n, 0, (struct sockaddr *) &(s->clientaddr), sizeof(s->clientaddr));
+        HASH_DEL(map, s);
+        if (n < 0) {
+            perror("ERROR in sendto");
+        }
     }
 }
 
@@ -152,6 +198,11 @@ int main() {
             exit(1);
         }
     }
+
+    bossservelen = sizeof(bossserveraddr);
+    bossserveraddr.sin_family = AF_INET;
+    bossserveraddr.sin_port = htons(53);
+    bossserveraddr.sin_addr.s_addr = inet_addr(boss_server.u.s);
 
     struct event_base *eb = event_base_new();
     if (!eb) {
