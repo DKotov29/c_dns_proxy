@@ -146,7 +146,7 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
         if (n < 0) {
             perror("ERROR in sendto");
         }
-    } else { // its response
+    } else { // its response todo possibly needs to filter only boss server
         struct for_map *s;
         uint64_t looking_for = result->id;
         HASH_FIND_INT(map, &looking_for, s);
