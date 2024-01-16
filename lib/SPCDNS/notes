@@ -1,0 +1,26 @@
+https://www.netmeister.org/blog/https-rrs.html
+via https://lobste.rs/s/z5ogrr/use_https_resource_records
+
+
+https://www.netmeister.org/blog/tlds.html
+https://www.netmeister.org/blog/dns-rrs.html
+
+On avoiding malloc:
+
+http://spin.atomicobject.com/2012/11/01/hey-c-is-a-functional-language-too/
+
+
+On Ruby bindings:
+
+http://onlamp.com/pub/a/onlamp/2004/11/18/extending_ruby.html
+
+---
+
+Google: extending Ruby in C
+
+---
+
+https://github.com/avsm/melange/blob/master/lib/dns/dns_rr.mpl
+
+http://www.bind9.net/dns-parameters
+
