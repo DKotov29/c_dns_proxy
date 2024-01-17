@@ -71,6 +71,7 @@ struct for_map {
 
 struct for_map *map = NULL;
 
+int blacklistvar;
 
 /* This function is called whenever there's incoming data to handle. */
 static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
@@ -82,7 +83,7 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
     //for (int kkk = 0; kkk < n; kkk++) {
     //    printf("%d ", buf[kkk]);
     //}
-    printf("\n");
+    //printf("\n");
     if (n < 0) {
         perror("ERROR in recvfrom");
         return;
@@ -102,7 +103,6 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
     size_t decodesize;
     memcpy(reply, buf, n);
 
-    /* reply contains a DNS packet, and replysize is set */
     decodesize = sizeof(decoded);
 
     enum dns_rcode rc = dns_decode(decoded, &decodesize, reply, replysize);
@@ -117,16 +117,40 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
             if (naive_is_blacklisted(result->questions->name, black_list, blacklist_len)) {
                 // if (strcmp(result->questions->name, "www.google.com.")) {
 
-                result->query = false;
-                result->rcode = RCODE_REFUSED;
-                dns_packet_t buf2[1024];
-                size_t len = sizeof(buf2);
-                dns_encode(buf2, &len, result);
-                n = sendto(fd, buf2, len, 0, (struct sockaddr *) &clientaddr, clientlen);
-                if (n < 0) {
-                    perror("ERROR in sendto");
+                if (blacklistvar == 1) {
+                    result->query = false;
+                    result->rcode = RCODE_REFUSED;
+                    dns_packet_t buf2[1024];
+                    size_t len = sizeof(buf2);
+                    dns_encode(buf2, &len, result);
+                    n = sendto(fd, buf2, len, 0, (struct sockaddr *) &clientaddr, clientlen);
+                    if (n < 0) {
+                        perror("ERROR in sendto");
+                    }
+                    return;
+                } else if (blacklistvar == 2) {
+                    result->query = false;
+                    result->ancount = 1;
+
+                    dns_answer_t ans;
+                    struct dns_a_t dnsat;
+                    dnsat.address = inet_addr("127.0.0.1");
+                    dnsat.class = CLASS_IN;
+                    dnsat.type = RR_A;
+                    dnsat.ttl = 0;
+                    dnsat.name = ".";
+
+                    ans.a = dnsat;
+                    result->answers = &ans;
+                    dns_packet_t buf2[1024];
+                    size_t len = sizeof(buf2);
+                    dns_encode(buf2, &len, result);
+                    n = sendto(fd, buf2, len, 0, (struct sockaddr *) &clientaddr, clientlen);
+                    if (n < 0) {
+                        perror("ERROR in sendto");
+                    }
+                    return;
                 }
-                return;
             }
         }
 
@@ -138,7 +162,7 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
             s->id = result->id;
             s->clientaddr = clientaddr;
             HASH_ADD_INT(map, id, s);
-        } else {// possibly needs improvement
+        } else {
             s->id = result->id;
             s->clientaddr = clientaddr;
         }
@@ -179,9 +203,10 @@ int main() {
         exit(1);
     }
     fclose(fp);
-
     toml_value_t boss_server = toml_table_string(tbl, "boss-server");
     toml_array_t *arr = toml_table_array(tbl, "black-list");
+    toml_value_t list_var = toml_table_int(tbl, "black-list-variant");
+    blacklistvar = list_var.u.sl;
     int l = toml_array_len(arr);
     blacklist_len = l;
     black_list = CALLOC(l, sizeof(char *));
