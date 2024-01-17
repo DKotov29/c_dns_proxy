@@ -41,25 +41,6 @@ bool naive_is_blacklisted(char *checking, char **blacklist, size_t blacklist_len
     return false;
 }
 
-struct dns_query_t *buildResponse(int id, bool query, enum dns_rcode rcode) {
-    dns_query_t *pQuery = malloc(sizeof(dns_query_t));
-//    for(size_t i = 0; i<sizeof(dns_query_t); i++){
-//        *((char*) pQuery) = 0;
-//    }
-    if (!pQuery)
-        return NULL;
-    pQuery->id = id;
-    // 0 = request, 1 = response
-    pQuery->query = query;
-
-    pQuery->rcode = rcode;
-
-    pQuery->questions = NULL;
-    pQuery->answers = NULL;
-    pQuery->nameservers = NULL;
-    pQuery->additional = NULL;
-    return pQuery;
-}
 
 struct sockaddr_in bossserveraddr;
 socklen_t bossservelen;
@@ -247,7 +228,7 @@ int main() {
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(53);
+    server_addr.sin_port = htons(53000);
     server_addr.sin_addr.s_addr = inet_addr("0.0.0.0");
 
     if (bind(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
