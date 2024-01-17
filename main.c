@@ -78,10 +78,10 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
     struct sockaddr_in clientaddr;
     static socklen_t clientlen = sizeof(clientaddr);
     ssize_t n = recvfrom(fd, buf, BUFSIZE, 0, (struct sockaddr *) &clientaddr, &clientlen);
-    printf("buffer:\n");
-    for (int kkk = 0; kkk < n; kkk++) {
-        printf("%d ", buf[kkk]);
-    }
+    //printf("buffer:\n");
+    //for (int kkk = 0; kkk < n; kkk++) {
+    //    printf("%d ", buf[kkk]);
+    //}
     printf("\n");
     if (n < 0) {
         perror("ERROR in recvfrom");
@@ -220,7 +220,7 @@ int main() {
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(53000);
+    server_addr.sin_port = htons(53);
     server_addr.sin_addr.s_addr = inet_addr("0.0.0.0");
 
     if (bind(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
