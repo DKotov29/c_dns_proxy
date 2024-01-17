@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netdb.h> // for udp
+#include <event2/thread.h>
 
 // dns decode/encode
 #include "./lib/SPCDNS/src/dns.h"
@@ -72,6 +73,8 @@ struct for_map {
 struct for_map *map = NULL;
 
 int blacklistvar;
+struct dns_a_t dnsat;
+
 
 /* This function is called whenever there's incoming data to handle. */
 static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
@@ -133,12 +136,6 @@ static void acceptDatagram(evutil_socket_t fd, short events, void *context) {
                     result->ancount = 1;
 
                     dns_answer_t ans;
-                    struct dns_a_t dnsat;
-                    dnsat.address = inet_addr("127.0.0.1");
-                    dnsat.class = CLASS_IN;
-                    dnsat.type = RR_A;
-                    dnsat.ttl = 0;
-                    dnsat.name = ".";
 
                     ans.a = dnsat;
                     result->answers = &ans;
@@ -217,12 +214,17 @@ int main() {
             black_list[i] = stringg.u.s;
             string_error |= !stringg.ok;
         }
-        if (!boss_server.ok || string_error) {
+        if (!boss_server.ok || string_error || !list_var.ok) {
             fprintf(stderr,
                     "problem while parsing toml file, not found \"boss-server\" string or \"black-list\" array of strings");
             exit(1);
         }
     }
+    dnsat.address = inet_addr("127.0.0.1");
+    dnsat.class = CLASS_IN;
+    dnsat.type = RR_A;
+    dnsat.ttl = 0;
+    dnsat.name = ".";
 
     bossservelen = sizeof(bossserveraddr);
     bossserveraddr.sin_family = AF_INET;
@@ -256,7 +258,7 @@ int main() {
     event_add(ev, NULL);;
 
     event_base_dispatch(eb);
-
+    evthread_use_pthreads();
 
     for (int i = 0; i < l; i++) {
         free(black_list[i]);

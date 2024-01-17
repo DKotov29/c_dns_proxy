@@ -1,4 +1,4 @@
 boss-server = "8.8.8.8"
 black-list = ["vk.com.", "vkontakte.ru."]
-black-list-variant = 2
+black-list-variant = 1
 # 1 - refused, 2 - return 127.0.0.1, other - no blacklist

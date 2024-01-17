@@ -8,7 +8,7 @@ Also, it must work good with 10k requests per seconds.
 
 
 # Build
-libevent-dev needed for building, also this code is not supported on windows. After cloning , in cloned directory command "gcc -Wall main.c -L. -levent -lm -levent_core -o oh_no" can be used to create executable file and command "./oh_no" to execute that file.
+libevent-dev needed for building, also this code is not supported on windows. After cloning , in cloned directory command "gcc -Wall main.c -L. -levent -lm -levent_core -lpthread -levent_pthreads -O3 -o oh_no" can be used to create executable file and command "./oh_no" to execute that file.
 
 # Use
 
