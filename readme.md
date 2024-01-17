@@ -14,6 +14,8 @@ libevent-dev needed for building, also this code is not supported on windows. Af
 
 With start of program you can query this dns server, for example by command "dig @127.0.0.1 -p 53 google.com"
 
+When the program starts, it will also recognize config, such as top server and blacklist, which can be changed if it happens as in the example.
+
 # Used libraries 
 
 https://github.com/arp242/toml-c/
